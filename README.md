@@ -1,4 +1,4 @@
-=head1 INTRODUCTION
+#INTRODUCTION
 
 Perl module for TrueType/OpenType font hacking. Supports reading, processing and
 writing of the following tables: GDEF, GPOS, GSUB, LTSH, OS/2, PCLT,
@@ -17,7 +17,7 @@ This module has been tested on Win32, Unix and Mac.
 Applications that were associated with this module have been moved to
 Font::TTF::Scripts where great things can be done.
 
-=head1 SYNOPSIS
+#SYNOPSIS
 
 Here is the regression test (you provide your own font). Run it once and then
 again on the output of the first run. There should be no differences between
@@ -38,7 +38,7 @@ the outputs of the two runs.
     $f->out($ARGV[1]);
     $f->DESTROY;               # forces close of $in and maybe memory reclaim!
 
-=head1 INSTALLATION
+#INSTALLATION
 
 If you have received this package as part of an Activestate PPM style .zip file
 then type
@@ -72,20 +72,20 @@ To tidy up, type:
 
 Windows users should use dmake instead of make.
 
-=head1 CHANGES
+#CHANGES
 
 See Changes for an overview of recent changes. 
 
-=head2 Future Changes
+#Future Changes
 
 I do not anticipate any more restructuring changes (but reserve the right to do so).
 
-=head1 AUTHOR
+#AUTHOR
 
 Martin Hosken L<http://scripts.sil.org/FontUtils>.
 (see CONTRIBUTORS for other authors).
 
-=head1 LICENSING
+#LICENSING
 
 Copyright (c) 1998-2016, SIL International (http://www.sil.org) 
 
@@ -93,5 +93,3 @@ This module is released under the terms of the Artistic License 2.0.
 For details, see the full text of the license in the file LICENSE.
 
 The fonts in the test suite are released under the SIL Open Font License 1.1, see t/OFL.txt.
-
-=cut
