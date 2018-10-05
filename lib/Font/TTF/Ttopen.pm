@@ -1,5 +1,8 @@
-package Font::TTF::Ttopen;
+unit package Font::TTF::Ttopen;
 
+use v6;
+
+=begin pod
 =head1 NAME
 
 Font::TTF::Ttopen - Opentype superclass for standard Opentype lookup based tables
@@ -275,88 +278,89 @@ are stored relative to another base within the subtable.
 
 =head1 METHODS
 
-=cut
+=end pod
 
 use Font::TTF::Table;
 use Font::TTF::Utils;
 use Font::TTF::Coverage;
 
-use strict;
-use vars qw(@ISA %FeatParams);
+my @ISA = 'Font::TTF::Table';
 
-@ISA = qw(Font::TTF::Table);
-
-%FeatParams = (
-    'ss' => 'Font::TTF::Features::Sset',
+my %FeatParams = (
+  'ss' => 'Font::TTF::Features::Sset',
   'cv' => 'Font::TTF::Features::Cvar',
   'si' => 'Font::TTF::Features::Size',
-  );
+);
 
+=begin pod
 =head2 $t->read
 
 Reads the table passing control to the subclass to handle the subtable specifics
 
-=cut
+=end pod
 
-sub read
-{
-    my ($self) = @_;
-    $self->SUPER::read or return $self;
+has $!INFILE;
+has $!OFFSET;
+has $!Version;
+has $!FEATURES;
+has @!FEAT_TAGS;
+
+method read() {
+    self.SUPER::read or return self;
 
     my ($dat, $i, $l, $oScript, $oFeat, $oLook, $tag, $nScript, $off, $dLang, $nLang, $lTag);
     my ($nFeat, $oParms, $FType, $nLook, $nSub, $j, $temp, $t);
-    my ($fh) = $self->{' INFILE'};
-    my ($moff) = $self->{' OFFSET'};
+    my $fh   = $!INFILE;
+    my $moff = $!OFFSET;
 
-    $fh->read($dat, 10);
-    ($self->{'Version'}, $oScript, $oFeat, $oLook) = TTF_Unpack("vSSS", $dat);
+    $fh.read($dat, 10);
+    ($!Version, $oScript, $oFeat, $oLook) = TTF_Unpack("vSSS", $dat);
 
 # read features first so that in the script/lang hierarchy we can use feature tags
 
-    $fh->seek($moff + $oFeat, 0);
-    $fh->read($dat, 2);
+    $fh.seek($moff + $oFeat, 0);
+    $fh.read($dat, 2);
     $nFeat = unpack("n", $dat);
-    $self->{'FEATURES'} = {};
-    $l = $self->{'FEATURES'};
-    $fh->read($dat, 6 * $nFeat);
-    for ($i = 0; $i < $nFeat; $i++)
-    {
-        ($tag, $off) = unpack("a4n", substr($dat, $i * 6, 6));
-        while (defined $l->{$tag})
-        {
-            if ($tag =~ m/(.*?)\s_(\d+)$/o)
-            { $tag = $1 . " _" . ($2 + 1); }
-            else
-            { $tag .= " _0"; }
+    $!FEATURES = %();
+    $l = $!FEATURES;
+    $fh.read($dat, 6 * $nFeat);
+    for ^$nFeat -> $i {
+        ($tag, $off) = unpack("a4n", subbuf($dat, $i * 6, 6));
+        while $l{$tag}.defined {
+            if $tag ~~ m/(.*?)\s_(\d+)$/ {
+                $tag = $1 . " _" . ($2 + 1);
+            } else {
+                $tag _= " _0";
+            }
         }
-        $l->{$tag}{' OFFSET'} = $off + $oFeat;
-        $l->{$tag}{'INDEX'} = $i;
-        push (@{$l->{'FEAT_TAGS'}}, $tag);
+        $l{$tag}{'OFFSET'} = $off + $oFeat;
+        $l{$tag}{'INDEX'} = $i;
+        @!FEAT_TAGS.push: $tag;
     }
 
-    foreach $tag (grep {m/^.{4}(?:\s_\d+)?$/o} keys %$l)
-    {
-        $oFeat=$moff + $l->{$tag}{' OFFSET'};
-        $fh->seek($oFeat, 0);
-        $fh->read($dat, 4);
+    for $l.keys.grep(m/^....\s_\d+/) -> $tag {
+    #foreach $tag (grep {m/^.{4}(?:\s_\d+)?$/o} keys %$l) {
+        $oFeat = $moff + $l{$tag}{'OFFSET'};
+        $fh.seek($oFeat, 0);
+        $fh.read($dat, 4);
         ($oParms, $nLook) = unpack("n2", $dat);
-        $fh->read($dat, $nLook * 2);
-        $l->{$tag}{'LOOKUPS'} = [unpack("n*", $dat)];
-        $l->{$tag}{'PARMS'}="";
-        if ($oParms > 0)
-        {
-            $FType=$FeatParams{substr($tag,0,2)};
-            if ($FType)
-            {
-                $t=$FType;
-                if ($^O eq "MacOS")
-                    { $t =~ s/^|::/:/oig; }
-                else
-                    { $t =~ s|::|/|oig; }
-                    require "$t.pm";
-                $l->{$tag}{'PARMS'} = $FType->new( INFILE  => $fh,
-                                                                                     OFFSET => $oFeat+$oParms);
-            $l->{$tag}{'PARMS'}->read;
+        $fh.read($dat, $nLook * 2);
+        $l{$tag}{'LOOKUPS'} = [unpack("n*", $dat)];
+        $l{$tag}{'PARMS'}   = '';
+        if $oParms > 0 {
+            $FType = $FeatParams{$tag.subbuf(0,2)};
+            if $FType {
+                $t = $FType;
+#               if $^O eq "MacOS" {
+#                   $t =~ s/^|::/:/oig;
+#               } else {
+                    $t =~ s|::|/|oig;
+#               }
+                require "$t.pm";
+                $l{$tag}{'PARMS'} = $FType.new( INFILE  => $fh,
+                                                OFFSET  => $oFeat+$oParms
+                                              );
+            $l{$tag}{'PARMS'}.read;
           }
         }               
         
@@ -364,132 +368,126 @@ sub read
 
 # Now the script/lang hierarchy
 
-    $fh->seek($moff + $oScript, 0);
-    $fh->read($dat, 2);
+    $fh.seek($moff + $oScript, 0);
+    $fh.read($dat, 2);
     $nScript = unpack("n", $dat);
-    $self->{'SCRIPTS'} = {};
-    $l = $self->{'SCRIPTS'};
-    $fh->read($dat, 6 * $nScript);
-    for ($i = 0; $i < $nScript; $i++)
-    {
-        ($tag, $off) = unpack("a4n", substr($dat, $i * 6, 6));
+    $!SCRIPTS = {};
+    $l = $!SCRIPTS;
+    $fh.read($dat, 6 * $nScript);
+    for ^$nScript -> $i {
+        ($tag, $off) = unpack("a4n", subbuf($dat, $i * 6, 6));
         $off += $oScript;
-        foreach (keys %$l)
-        { $l->{$tag}{' REFTAG'} = $_ if ($l->{$_}{' OFFSET'} == $off
-                                        && !defined $l->{$_}{' REFTAG'}); }
-        $l->{$tag}{' OFFSET'} = $off;
+        for $l.keys {
+            $l{$tag}{'REFTAG'} = $_ if $l{$_}{'OFFSET'} == $off
+                                       && ! $l{$_}{'REFTAG'}.defined }
+        $l{$tag}{'OFFSET'} = $off;
     }
 
-    foreach $tag (keys %$l)
-    {
-        next if ($l->{$tag}{' REFTAG'});
-        $fh->seek($moff + $l->{$tag}{' OFFSET'}, 0);
-        $fh->read($dat, 4);
+    for $l.keys {
+        next if $l{$tag}{'REFTAG'};
+        $fh.seek($moff + $l{$tag}{'OFFSET'}, 0);
+        $fh.read($dat, 4);
         ($dLang, $nLang) = unpack("n2", $dat);
-        $l->{$tag}{'DEFAULT'}{' OFFSET'} =
-                $dLang + $l->{$tag}{' OFFSET'} if $dLang;
-        $fh->read($dat, 6 * $nLang);
-        for ($i = 0; $i < $nLang; $i++)
-        {
-            ($lTag, $off) = unpack("a4n", substr($dat, $i * 6, 6));
-            $off += $l->{$tag}{' OFFSET'};
-            $l->{$tag}{$lTag}{' OFFSET'} = $off;
-            foreach (@{$l->{$tag}{'LANG_TAGS'}}, 'DEFAULT')
-            { $l->{$tag}{$lTag}{' REFTAG'} = $_ if ($l->{$tag}{$_}{' OFFSET'} == $off
-                                                   && !$l->{$tag}{$_}{' REFTAG'}); }
-            push (@{$l->{$tag}{'LANG_TAGS'}}, $lTag);
+        $l{$tag}{'DEFAULT'}{'OFFSET'} =
+                $dLang + $l{$tag}{'OFFSET'} if $dLang;
+        $fh.read($dat, 6 * $nLang);
+        for ^$nLang -> $i {
+            ($lTag, $off) = unpack("a4n", subbuf($dat, $i * 6, 6));
+            $off += $l{$tag}{'OFFSET'};
+            $l{$tag}{$lTag}{'OFFSET'} = $off;
+            for $l{$tag}<LANG_TAGS>, 'DEFAULT' {
+                $l{$tag}{$lTag}<REFTAG> = $_ if  $l{$tag}{$_}<OFFSET> == $off
+                                             && !$l{$tag}{$_}<REFTAG>;
+            }
+            $l{$tag}{'LANG_TAGS'}.push: $lTag
         }
-        foreach $lTag (@{$l->{$tag}{'LANG_TAGS'}}, 'DEFAULT')
-        {
-            next unless defined $l->{$tag}{$lTag};
-            next if ($l->{$tag}{$lTag}{' REFTAG'});
-            $fh->seek($moff + $l->{$tag}{$lTag}{' OFFSET'}, 0);
-            $fh->read($dat, 6);
-            ($l->{$tag}{$lTag}{'RE-ORDER'}, $l->{$tag}{$lTag}{'DEFAULT'}, $nFeat) 
+        for $l{$tag}<LANG_TAGS>, 'DEFAULT' -> $lTag {
+            next unless $l{$tag}{$lTag}.defined;
+            next if $l{$tag}{$lTag}<REFTAG>;
+            $fh.seek($moff + $l{$tag}{$lTag}<OFFSET>, 0);
+            $fh.read($dat, 6);
+            ($l{$tag}{$lTag}<RE-ORDER>, $l{$tag}{$lTag}<DEFAULT>, $nFeat) 
               = unpack("n3", $dat);
-            $fh->read($dat, $nFeat * 2);
-            $l->{$tag}{$lTag}{'FEATURES'} = [map {$self->{'FEATURES'}{'FEAT_TAGS'}[$_]} unpack("n*", $dat)];
+            $fh.read($dat, $nFeat * 2);
+            $l{$tag}{$lTag}<FEATURES> = [map {$!FEATURES<FEAT_TAGS>[$_]} unpack("n*", $dat)];
         }
-        foreach $lTag (@{$l->{$tag}{'LANG_TAGS'}}, 'DEFAULT')
-        {
+        for $l{$tag}<LANG_TAGS>, 'DEFAULT' -> $lTag {
             # Make copies of referenced languages for each reference. 
-            next unless $l->{$tag}{$lTag}{' REFTAG'};
-            $temp = $l->{$tag}{$lTag}{' REFTAG'};
-            $l->{$tag}{$lTag} = &copy($l->{$tag}{$temp});
-            $l->{$tag}{$lTag}{' REFTAG'} = $temp;
+            next unless $l{$tag}{$lTag}<REFTAG>;
+            $temp     = $l{$tag}{$lTag}<REFTAG>;
+            $l{$tag}{$lTag} = copy($l{$tag}{$temp});
+            $l{$tag}{$lTag}<REFTAG> = $temp;
         }
     }
-    foreach $tag (keys %$l)
-    {
-        next unless $l->{$tag}{' REFTAG'};
-        $temp = $l->{$tag}{' REFTAG'};
-        $l->{$tag} = &copy($l->{$temp});
-        $l->{$tag}{' REFTAG'} = $temp;
+    for $l.keys -> $tag {
+        next unless $l{$tag}<REFTAG>;
+        $temp     = $l{$tag}<REFTAG>;
+        $l{$tag} = copy($l{$temp});
+        $l{$tag}<REFTAG> = $temp;
     }
 
 # And finally the lookups
 
-    $fh->seek($moff + $oLook, 0);
-    $fh->read($dat, 2);
+    $fh.seek($moff + $oLook, 0);
+    $fh.read($dat, 2);
     $nLook = unpack("n", $dat);
-    $fh->read($dat, $nLook * 2);
+    $fh.read($dat, $nLook * 2);
     $i = 0;
-    map { $self->{'LOOKUP'}[$i++]{' OFFSET'} = $_; } unpack("n*", $dat);
+    map { $!LOOKUP[$i++]<OFFSET> = $_; } unpack("n*", $dat);
 
-    for ($i = 0; $i < $nLook; $i++)
-    {
-        $l = $self->{'LOOKUP'}[$i];
-        $fh->seek($l->{' OFFSET'} + $moff + $oLook, 0);
-        $fh->read($dat, 6);
-        ($l->{'TYPE'}, $l->{'FLAG'}, $nSub) = unpack("n3", $dat);
-        $fh->read($dat, $nSub * 2);
+    for ^$Look -> $i {
+        $l = $!LOOKUP[$i];
+        $fh.seek($l<OFFSET> + $moff + $oLook, 0);
+        $fh.read($dat, 6);
+        ($l<TYPE>, $l<FLAG>, $nSub) = unpack("n3", $dat);
+        $fh.read($dat, $nSub * 2);
         my @offsets = unpack("n*", $dat);
-        if ($l->{'FLAG'} & 0x0010)
-        {
-            $fh->read($dat, 2);
-            $l->{'FILTER'} = unpack("n", $dat);
+        if $l<FLAG> +& 0x0010 {
+            $fh.read($dat, 2);
+            $l<FILTER> = unpack("n", $dat);
         }
-        my $isExtension = ($l->{'TYPE'} == $self->extension());
-        for ($j = 0; $j < $nSub; $j++)
-        {
-            $l->{'SUB'}[$j]{' OFFSET'} = $offsets[$j];
-            $fh->seek($moff + $oLook + $l->{' OFFSET'} + $l->{'SUB'}[$j]{' OFFSET'}, 0);
-            if ($isExtension)
-            {
-                $fh->read($dat, 8);
+        my $isExtension = ($l<TYPE> == self.extension());
+        for ^$nSub -> $j {
+            $l<SUB>[$j]<OFFSET> = $offsets[$j];
+            $fh.seek($moff + $oLook + $l<OFFSET> + $l<SUB>[$j]<OFFSET>, 0);
+            if $isExtension {
+                $fh.read($dat, 8);
                 my $longOff;
-                (undef, $l->{'TYPE'}, $longOff) = unpack("nnN", $dat);
-                $l->{'SUB'}[$j]{' OFFSET'} += $longOff;
-                $fh->seek($moff + $oLook + $l->{' OFFSET'} + $l->{'SUB'}[$j]{' OFFSET'}, 0);
+                (*, $l<TYPE>, $longOff) = unpack("nnN", $dat);
+                $l<SUB>[$j]<OFFSET> += $longOff;
+                $fh.seek($moff + $oLook + $l<OFFSET> + $<SUB>[$j]<OFFSET>, 0);
             }
-            $self->read_sub($fh, $l, $j);
+            .read_sub($fh, $l, $j);
         }
     }
-    return $self;
+    self;
 }
 
+=begin pod
 =head2 $t->read_sub($fh, $lookup, $index)
 
 This stub is to allow subclasses to read subtables of lookups in a table specific manner. A
 reference to the lookup is passed in along with the subtable index. The file is located at the
 start of the subtable to be read
 
-=cut
+=end pod
 
-sub read_sub
+method read_sub
 { }
 
 
+=begin pod
 =head2 $t->extension()
 
 Returns the lookup number for the extension table that allows access to 32-bit offsets.
 
-=cut
+=end pod
 
-sub extension
+method extension
 { }
 
 
+=begin pod
 =head2 $t->out($fh)
 
 Writes this Opentype table to the output calling $t->out_sub for each sub table
@@ -499,15 +497,13 @@ the relationships fixed. This includes a LANG_TAGS list for a script, and that a
 scripts and languages in their respective dictionaries either have a REFTAG or contain
 real data.
 
-=cut
+=end pod
 
-sub out
-{
-    my ($self, $fh) = @_;
+method out($fh) {
     my ($i, $j, $base, $off, $tag, $t, $l, $lTag, $oScript, @script, @tags);
     my ($end, $nTags, @offs, $oFeat, $oFtable, $oParms, $FType, $oLook, $nSub, $nSubs, $big, $out);
     
-    return $self->SUPER::out($fh) unless $self->{' read'};
+    return self.SUPER::out($fh) unless .read;
 
 # First sort the features
     $i = 0;
